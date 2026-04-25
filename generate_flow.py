@@ -1,8 +1,15 @@
 """
 沖縄振興特定事業推進費 補助金申請 事業概要フロー生成スクリプト
 Generates an A3 landscape Excel one-pager flowchart.
+
+Usage:
+  python generate_flow.py
+  python generate_flow.py --data flow_data.json          # browser JSON export
+  python generate_flow.py --output my_output.xlsx
 """
 
+import argparse
+import json
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, range_boundaries
@@ -262,7 +269,18 @@ LAW_REFS = [
 # ---------------------------------------------------------------------------
 # Build workbook
 # ---------------------------------------------------------------------------
-def build_excel(output_path: str):
+def build_excel(output_path: str, values: dict = None):
+    """
+    values: optional dict from browser JSON export
+      { "S1": {"s1_f1": "text", ...}, "S2": {...}, ... }
+    Field IDs follow the pattern  s{section_num}_f{field_index_1based}.
+    """
+    def field_value(sec_key: str, field_idx: int, default: str) -> str:
+        if not values:
+            return default
+        fid = f"{sec_key.lower()}_f{field_idx + 1}"
+        return values.get(sec_key, {}).get(fid, default)
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "事業概要フロー"
@@ -372,13 +390,12 @@ def build_excel(output_path: str):
             end_row = row + span - 1
             cell_range = f"{sc}{row}:{ec}{end_row}"
 
-            text = f"【{label}】\n{placeholder}"
+            value = field_value(sec["key"], i, placeholder)
+            text = f"【{label}】\n{value}"
             block(ws, cell_range, text,
                   bg=sec["b_color"], fg="303030",
                   size=8, bold=False, h="left", v="top",
                   border_color=sec["h_color"])
-            # Label part – make first line bold-ish via rich text workaround:
-            # (openpyxl doesn't support inline formatting easily; we keep it plain)
             row = end_row + 1
 
     for s in SECTIONS:
@@ -461,4 +478,15 @@ def build_excel(output_path: str):
 
 
 if __name__ == "__main__":
-    build_excel("/home/user/line-stamp/okinawa_subsidy_flow.xlsx")
+    parser = argparse.ArgumentParser(description="事業概要フロー Excel 生成")
+    parser.add_argument("--data",   metavar="JSON", help="ブラウザからエクスポートした flow_data.json")
+    parser.add_argument("--output", metavar="XLSX", default="/home/user/line-stamp/okinawa_subsidy_flow.xlsx",
+                        help="出力ファイルパス（デフォルト: okinawa_subsidy_flow.xlsx）")
+    args = parser.parse_args()
+
+    override = None
+    if args.data:
+        with open(args.data, encoding="utf-8") as f:
+            override = json.load(f)
+
+    build_excel(args.output, override)
